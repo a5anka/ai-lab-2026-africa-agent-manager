@@ -94,7 +94,7 @@ wrong, there is nothing here to tell you *where* it went wrong — only that
 a 200 was returned.
 
 That is the gap module 02 closes. But first the agent has to live
-somewhere other than your laptop.
+somewhere other than your own machine.
 
 <details>
 <summary>Or via curl</summary>

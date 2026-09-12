@@ -2,7 +2,7 @@
 
 **WSO2Con 2026 Africa — Agent Manager lab, session 1**
 
-Your agent works on your laptop. This lab is about everything that
+Your agent runs locally and it works. This lab is about everything that
 happens after that: getting it built, deployed, instrumented, and
 measured — using [WSO2 Agent Manager](https://wso2.com/agent-platform/agent-manager/).
 

@@ -1,4 +1,4 @@
-# Module 01 — Build & Deploy: the agent leaves your laptop
+# Module 01 — Build & Deploy: source in, service out
 
 **Duration:** 15 min
 
@@ -104,7 +104,7 @@ curl -s -X POST "$AGENT_URL/chat" \
 # → {"response":"The pool is open 7am-10pm daily. ..."}
 ```
 
-The same agent that ran on your laptop in module 00, now behind a gateway
+The same agent you ran locally in module 00, now behind a gateway
 that will not talk to a stranger.
 
 ## Step 5 — The same thing, in one command
