@@ -72,10 +72,12 @@ Then open [`00-starting-point/README.md`](00-starting-point/README.md).
 
 ## A note on versions
 
-Agent Manager is pre-1.0 and moving quickly. This lab was built and
-verified against `amctl 1.0.0-alpha1`. Flags and screens may have shifted
-by the time you read this — `amctl <command> --help` is always the
-authority on flag shape, not this repo.
+This lab targets Agent Manager **1.0.0**, generally available since
+September 2026.
+
+Command flags and console screens do move between releases. Where this
+repo and your installation disagree, believe your installation —
+`amctl <command> --help` is always the authority on flag shape.
 
 ## Licence
 
