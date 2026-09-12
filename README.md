@@ -19,8 +19,6 @@ measured — using [WSO2 Agent Manager](https://wso2.com/agent-platform/agent-ma
 Each module has its own `README.md` with the steps. They are written to be
 followed in order — later modules assume the agent registered in 01.
 
-The opening talk is in [`slides.md`](slides.md).
-
 ## The use case
 
 A concierge agent for *The Grand Meridian*, a fictional luxury hotel.
