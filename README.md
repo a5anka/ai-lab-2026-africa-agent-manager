@@ -9,11 +9,11 @@ measured — using [WSO2 Agent Manager](https://wso2.com/agent-platform/agent-ma
 ## Tutorial plan
 
 ```
-00 — Baseline        An agent on a laptop. Works fine. Ships nowhere.
-01 — Build & Deploy  Platform-hosted from Git. Console once, then amctl.
-02 — Observability   OTEL GenAI traces, and reading them without guessing.
-03 — Evaluation      You cannot unit-test a thing that answers differently every time.
-04 — External Agents The same laptop agent, governed without moving it.
+00 — Starting Point  A working agent, running locally.
+01 — Build & Deploy  From a Git repository to a running service.
+02 — Observability   Seeing inside a single request.
+03 — Evaluation      Measuring something that answers differently every time.
+04 — External Agents Agents the platform doesn't run, governed all the same.
 ```
 
 Each module has its own `README.md` with the steps. They are written to be
@@ -68,7 +68,7 @@ python main.py
 # → listening on http://localhost:8000
 ```
 
-Then open [`00-baseline/README.md`](00-baseline/README.md).
+Then open [`00-starting-point/README.md`](00-starting-point/README.md).
 
 ## A note on versions
 

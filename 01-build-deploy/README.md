@@ -219,5 +219,5 @@ signature.
 
 ---
 
-Previous: [Module 00 — Baseline](../00-baseline/README.md) ·
+Previous: [Module 00 — Starting Point](../00-starting-point/README.md) ·
 Next: [Module 02 — Observability](../02-observability/README.md)

@@ -1,4 +1,4 @@
-# Module 00 — Baseline: an agent on a laptop
+# Module 00 — Starting Point: a working agent, running locally
 
 **Duration:** 5 min
 
@@ -114,7 +114,7 @@ Five things, and the next four modules take them in order:
 
 | Missing | Module |
 |---|---|
-| Anywhere to run but this laptop | 01 — Build & Deploy |
+| Anywhere to run but this machine | 01 — Build & Deploy |
 | Any view of what happened inside a request | 02 — Observability |
 | Any measure of whether the answers are good | 03 — Evaluation |
 | Any of the above for agents you did not build | 04 — External Agents |
