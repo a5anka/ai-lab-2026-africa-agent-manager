@@ -74,6 +74,22 @@ Wait for `"status": "active"`. Note the endpoint URL — you need it next.
 even when the agent is broken. Liveness comes from `status`, `logs` or
 `metrics`, never from `get`.
 
+> **"Deployed" does not mean "in production."**
+>
+> Deploying places the agent in the **lowest environment** of its
+> deployment pipeline — `default` here. The CLI is blunt about it:
+> *"Deploy a built agent image to the lowest environment in the deployment
+> pipeline."* There is no target-environment flag.
+>
+> Getting to production is a separate, deliberate step: you **promote** the
+> same built image up the pipeline, picking up each environment's own
+> configuration on the way. Promotion is a console action — there is no
+> `amctl promote`.
+>
+> So the shape is *build once, deploy to dev, test there, promote onward* —
+> not push-to-prod. This lab uses a single environment, so there is nothing
+> to promote to; environments and promotion are a session-2 topic.
+
 ## Step 4 — Call it
 
 Deployed agents sit behind the gateway with API-key authentication on by
