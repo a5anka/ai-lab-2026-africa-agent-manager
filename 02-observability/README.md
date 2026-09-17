@@ -248,7 +248,7 @@ showed that span count tracks what the agent decided to do.
 > `data.count`, an unfiltered one as `data.totalCount`, so
 > `jq '.data.count // .data.totalCount'` covers both.
 
-## Step 6 — The tool the agent could barely use
+## Step 6 — The tool the agent could not use
 
 Ask the most ordinary question a hotel guest asks, three times:
 
@@ -257,93 +257,133 @@ for i in 1 2 3; do
   curl -s -X POST "$AGENT_URL/chat" \
     -H 'Content-Type: application/json' -H "X-API-Key: $AGENT_KEY" \
     -d "{\"message\":\"Can you recommend somewhere to eat near the hotel?\",\"session_id\":\"diag-$i\",\"context\":{}}" \
-    | jq -r '.response' | head -3
+    | jq -r '.response'
 done
 ```
 
-You will get two different kinds of answer. Most of the time, a good one:
-
 ```
-I recommend the following dining options near The Grand Meridian:
-1. L'Ardoise - A French bistro, just a 4-minute walk away...
-```
+I'm sorry, I wasn't able to retrieve dining recommendations at this moment.
+Would you like me to connect you with our team?
 
-And sometimes this:
+I'm unable to provide dining recommendations at the moment. May I connect
+you with our concierge desk?
 
-```
-I'm sorry for the inconvenience. I can certainly provide restaurant
-recommendations near the hotel. Would you like me to do so?
+I apologize for the inconvenience. It seems I can't retrieve dining
+recommendations right now.
 ```
 
-Same question, same agent, same code. One reply is what you built; the
-other apologises for nothing and asks the guest to ask again. Both are
-`200 OK`, and the runtime logs are identical.
+Three for three. The concierge cannot name a restaurant — and
+`agent/hotel_data.py` has three of them, a four-minute walk away.
 
-An agent that is *mostly* fine is the hardest kind to act on. There is
-nothing to reproduce and nothing to report — until you look at the tool
-spans, where all three requests say the same thing:
+Everything a normal service would tell you says this is fine. `200 OK`
+every time. No exception, no stack trace, nothing in the runtime logs. The
+replies are well-formed, polite and on-brand; if you only read those, the
+obvious conclusion is that nobody loaded the restaurant data.
 
-| Call | Input | Output |
-|---|---|---|
-| 1 | `{"category": "dining"}` | `{"error": "Unknown category. Available: restaurants, family, nightlife, outdoors."}` |
-| 2 | `{"category": "restaurants"}` | `{"category": "restaurants", "recommendations": [...], "count": 3}` |
+Open one of the traces and look at its single tool span:
 
-**Every one of those requests got the first call wrong.** The good answers
-are the model noticing the error, working out the real category name from
-it, and trying again — a second round trip and a second set of tokens,
-every time anyone asks about food. The bad answer is the same first call,
-on a turn where the model gave up instead of retrying.
+| | |
+|---|---|
+| **Input** | `{"category": "dining"}` |
+| **Output** | `{"error": "Unknown category."}` |
+
+The data is keyed `restaurants`, `family`, `nightlife`, `outdoors`. There
+is no `dining`, so the tool refused, and the system prompt's instruction
+not to surface tool errors turned that refusal into an apology.
 
 **Why did it ask for `dining`?** Because that is what we told it to ask
-for. The description shipped to the model lists the categories, and the
-list is wrong:
+for. The description shipped to the model lists the categories, and one of
+them is wrong:
 
 ```
 category: One of: dining, family, nightlife, outdoors.
 ```
 
-The data in `agent/hotel_data.py` is keyed `restaurants`, `family`,
-`nightlife`, `outdoors`. Three of the four match. One does not, and it is
-the one every hungry guest hits.
+Three of the four match the data. The fourth is the one every hungry guest
+hits. The model was not confused and did not hallucinate — it read the
+interface we gave it and used it exactly as documented.
 
-The model was not confused and it did not hallucinate. It read the
-interface we gave it and used it exactly as documented. The bug is in the
-sentence, and the sentence is in the prompt the model sees — which is why
-nothing in your tests, your types or your status codes has an opinion
-about it.
+That sentence is the entire bug, and notice where it is *not*: not in the
+code path, where every function did what it was written to do; not in the
+response, which is well-formed; not in the status code. It is in an
+argument the model chose, and arguments only exist in the trace.
+
+### Why the failure was total
+
+The tool said `Unknown category.` and nothing else — so the model had
+nowhere to go. It is worth seeing what a better refusal buys, because
+`agent/tools.py` can say more, and it is configuration:
+
+```bash
+amctl agent deploy grand-meridian-concierge \
+  --project default --env TOOL_ERRORS=helpful --yes
+```
+
+Now the refusal names the categories that do exist. Ask again and the
+guest gets a real answer — the model reads the error, works out the
+category it should have asked for, and retries. But look at the trace
+list:
+
+```
+4a1fdae1  24 spans
+9178f9b9  24 spans
+b95e6661  24 spans
+```
+
+Twenty-four spans, where a clean request is sixteen. Eight of them are a
+round trip the agent should never have needed, and it pays that on every
+food question, forever, silently. Step 5's `--condition excessive_steps`
+is built to find exactly this shape.
+
+So a good error message bought **resilience, not correctness**. The wrong
+argument is still being sent. That is worth knowing about your own tools:
+what they say when they refuse is part of the same interface as what they
+accept, and it decides whether a small drift degrades or fails outright.
 
 ### The fix
 
-`agent/tools.py` maintains that list two ways, and picks between them with
-an env var read at startup:
+The drift itself is the thing to fix. `agent/tools.py` maintains that
+category list two ways, and picks with an env var read at startup:
 
 | `TOOL_DOCS` | The description is |
 |---|---|
 | `handwritten` (default) | typed out by hand — and drifted from the data |
 | `generated` | derived from `RECOMMENDATIONS`, so it cannot drift |
 
-So the fix is configuration, not code, and there is nothing to rebuild:
+Configuration again, so there is nothing to rebuild:
 
 ```bash
 amctl agent deploy grand-meridian-concierge \
   --project default --env TOOL_DOCS=generated --yes
 ```
 
-Wait for `active`, ask the same question, and read the tool spans again:
+The same image redeploys with new config — same build name. Mine was
+`active` in about a minute, against nearly four for the build that
+produced the image.
 
-| Call | Input | Output |
-|---|---|---|
-| 1 | `{"category": "restaurants"}` | `{"category": "restaurants", "recommendations": [...], "count": 3}` |
+Ask once more:
 
-One call, the right call, every time — and the answer names L'Ardoise
-without being asked twice.
+| | |
+|---|---|
+| **Input** | `{"category": "restaurants"}` |
+| **Output** | `{"category": "restaurants", "recommendations": [...], "count": 3}` |
 
-> **The durable version of this fix is the second row of that table.** A
-> tool description is an interface that a model reads and no compiler
-> checks: nothing in Python objects to a docstring that lies about its own
-> data. Hand-written descriptions drift the moment the data moves.
-> Generating them from the thing they describe is how you stop shipping
-> this bug — and traces are how you find the one you already shipped.
+```
+93c0af9c  16 spans
+7c7e4845  16 spans
+17f9103e  16 spans
+```
+
+One call, the right call, three for three — and eight spans lighter than
+the version that recovered.
+
+> **The fix is not the word, it is the second row of that table.** A tool
+> description is an interface that a model reads and no compiler checks:
+> nothing in Python objects to a docstring that lies about its own data,
+> and the tests still pass. Hand-written descriptions drift the moment the
+> data moves. Generating them from the thing they describe is how you stop
+> shipping this bug — and traces are how you find the one you already
+> shipped.
 
 ## Step 7 — Ask in English
 

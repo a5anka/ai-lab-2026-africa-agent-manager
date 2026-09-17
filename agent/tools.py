@@ -70,12 +70,11 @@ def get_local_recommendations(category: str) -> dict[str, Any]:
     """Return curated recommendations near the hotel by category.
 
     The description the model actually reads is built below, from
-    RECOMMENDATION_CATEGORY_DOC — see the note there.
+    RECOMMENDATION_CATEGORY_DOC. The text of the error this returns is
+    controlled by TOOL_ERRORS — see the notes on both.
     """
     if not isinstance(category, str) or category not in RECOMMENDATIONS:
-        return {
-            "error": f"Unknown category. Available: {', '.join(RECOMMENDATIONS.keys())}."
-        }
+        return {"error": _category_error()}
     return {
         "category": category,
         "recommendations": RECOMMENDATIONS[category],
@@ -105,6 +104,26 @@ def _category_list() -> str:
     if os.environ.get("TOOL_DOCS", "handwritten").strip().lower() == "generated":
         return ", ".join(RECOMMENDATIONS)
     return _HANDWRITTEN_CATEGORIES
+
+
+# What a tool says when it refuses is part of the same interface. TOOL_ERRORS
+# picks how much this one says, and it decides whether the agent can recover
+# from a bad argument on its own:
+#
+#   terse (the default)
+#       "Unknown category." The model is told no and given nothing to work
+#       with, so a wrong argument becomes a failed answer.
+#
+#   helpful
+#       The refusal names the categories that do exist, which is usually
+#       enough for the model to correct itself and retry — at the cost of an
+#       extra round trip it should not have needed.
+#
+# Compare check_room_availability above, which always names its valid values.
+def _category_error() -> str:
+    if os.environ.get("TOOL_ERRORS", "terse").strip().lower() == "helpful":
+        return f"Unknown category. Available: {', '.join(RECOMMENDATIONS)}."
+    return "Unknown category."
 
 
 RECOMMENDATION_CATEGORY_DOC = f"""Return curated recommendations near the hotel by category.
