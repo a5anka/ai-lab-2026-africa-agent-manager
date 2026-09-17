@@ -67,8 +67,8 @@ no manifest, no SDK.
    | `OPENAI_MODEL` | `gpt-4o` | |
    | `PORT` | `8000` | |
 
-   **`PORT` is not optional.** See "Why `PORT`" below — it is the single
-   most common reason a lab agent builds fine and never comes up.
+   **`PORT` is not optional.** It is the single most common reason a
+   lab agent builds fine and never comes up.
 
 8. Click **Create**. The build starts automatically.
 
@@ -107,26 +107,6 @@ amctl agent status grand-meridian-concierge --project default --json \
 Wait for `"status": "active"`. Note the endpoint URL — you need it next.
 The console shows the same thing on the agent's overview: each
 environment with its own status and endpoint.
-
-`amctl agent get` will *not* tell you this. Its `status` field is empty
-even when the agent is broken. Liveness comes from `status`, `logs` or
-`metrics`, never from `get`.
-
-> **"Deployed" does not mean "in production."**
->
-> Deploying places the agent in the **lowest environment** of its
-> deployment pipeline — `default` here. The CLI is blunt about it:
-> *"Deploy a built agent image to the lowest environment in the deployment
-> pipeline."* There is no target-environment flag.
->
-> Getting to production is a separate, deliberate step: you **promote** the
-> same built image up the pipeline, picking up each environment's own
-> configuration on the way. Promotion is a console action — there is no
-> `amctl promote`.
->
-> So the shape is *build once, deploy to dev, test there, promote onward* —
-> not push-to-prod. This lab uses a single environment, so there is nothing
-> to promote to; environments and promotion are a session-2 topic.
 
 ## Step 4 — Call it
 
@@ -224,48 +204,6 @@ Now ask, in plain English:
 
 and the assistant runs the build → logs → metrics → traces sequence
 rather than guessing.
-
-## Why `PORT`
-
-Worth understanding, because the failure is silent and the logs only make
-sense once you have seen it.
-
-Chat Agents are expected on port **8000**. But the Python buildpack sets
-its own conventional `PORT=8080` in the container, and `agent/main.py`
-does what any well-behaved twelve-factor app does — it honours `PORT`:
-
-```python
-port = int(os.environ.get("PORT", "8000"))
-```
-
-So the app binds 8080, nothing answers on 8000, the health check fails,
-and the pod is torn down and restarted. The build is green throughout.
-The runtime logs tell the whole story:
-
-```
-INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
-INFO:     Application startup complete.
-INFO:     Shutting down                          ← health check never passed
-```
-
-Setting `PORT=8000` explicitly overrides the buildpack default:
-
-```
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Application startup complete.
-```
-
-and the status flips to `active`.
-
-If you ever hit this without knowing the cause:
-
-```bash
-amctl agent logs grand-meridian-concierge --project default --env default \
-  --since 30m --json | jq -r '.data.logs[] | "\(.timestamp) \(.log)"'
-```
-
-`Uvicorn running on ...` followed by `Shutting down`, on a loop, is the
-signature.
 
 ## Going further
 
