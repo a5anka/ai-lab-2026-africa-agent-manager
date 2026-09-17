@@ -317,9 +317,9 @@ dd45e286  check_room_availability
 
 There it is, in the tool's recorded result.
 
-**Why the condition missed it.** Look at what `agent/tools.py` does — it
-is the first line of the module 00 agent's docstring, and a completely
-ordinary way to write a tool:
+**Why the condition missed it.** `agent/tools.py` says so in its own
+docstring — *"Tools never raise into the agent loop"* — and it is a
+completely ordinary way to write a tool:
 
 ```python
 if not isinstance(n, int) or n < 1 or n > 30:
