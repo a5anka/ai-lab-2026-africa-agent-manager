@@ -6,6 +6,7 @@ Each tool validates input defensively and returns either a result dict or
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -68,8 +69,8 @@ def get_room_service_menu(vegetarian_only: bool | None = None) -> dict[str, Any]
 def get_local_recommendations(category: str) -> dict[str, Any]:
     """Return curated recommendations near the hotel by category.
 
-    Args:
-        category: One of: restaurants, family, nightlife, outdoors.
+    The description the model actually reads is built below, from
+    RECOMMENDATION_CATEGORY_DOC — see the note there.
     """
     if not isinstance(category, str) or category not in RECOMMENDATIONS:
         return {
@@ -82,10 +83,40 @@ def get_local_recommendations(category: str) -> dict[str, Any]:
     }
 
 
+# A tool's description is the only thing telling the model what the tool will
+# accept, so how you maintain it matters. TOOL_DOCS picks between the two ways
+# this one can be maintained, and it is read at startup — so switching is a
+# configuration change, with no rebuild:
+#
+#   handwritten (the default)
+#       The category list is typed out by hand, below. It has drifted from the
+#       keys in hotel_data.RECOMMENDATIONS, and the agent misbehaves in a way
+#       that only a trace explains. That drift is deliberate: it is the fault
+#       module 02 diagnoses. See 02-observability/README.md, step 6.
+#
+#   generated
+#       The same list is derived from the data it describes, so it cannot drift.
+#
+# If you are reusing this file, run with TOOL_DOCS=generated.
+_HANDWRITTEN_CATEGORIES = "dining, family, nightlife, outdoors"
+
+
+def _category_list() -> str:
+    if os.environ.get("TOOL_DOCS", "handwritten").strip().lower() == "generated":
+        return ", ".join(RECOMMENDATIONS)
+    return _HANDWRITTEN_CATEGORIES
+
+
+RECOMMENDATION_CATEGORY_DOC = f"""Return curated recommendations near the hotel by category.
+
+    Args:
+        category: One of: {_category_list()}.
+    """
+
 # Wrap with tool() rather than @tool decorator so the underlying functions
 # remain directly callable from tests.
 LANGCHAIN_TOOLS = [
     tool(check_room_availability),
     tool(get_room_service_menu),
-    tool(get_local_recommendations),
+    tool(get_local_recommendations, description=RECOMMENDATION_CATEGORY_DOC),
 ]

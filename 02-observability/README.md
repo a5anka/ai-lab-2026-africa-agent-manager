@@ -248,81 +248,102 @@ showed that span count tracks what the agent decided to do.
 > `data.count`, an unfiltered one as `data.totalCount`, so
 > `jq '.data.count // .data.totalCount'` covers both.
 
-## Step 6 — The failure the response hid
+## Step 6 — The tool the agent could barely use
 
-Ask for a stay the hotel cannot price:
+Ask the most ordinary question a hotel guest asks, three times:
 
 ```bash
-curl -s -X POST "$AGENT_URL/chat" \
-  -H 'Content-Type: application/json' -H "X-API-Key: $AGENT_KEY" \
-  -d '{"message":"I would like the presidential suite for 45 nights starting 2026-11-01. What is the total?","session_id":"diag","context":{}}'
+for i in 1 2 3; do
+  curl -s -X POST "$AGENT_URL/chat" \
+    -H 'Content-Type: application/json' -H "X-API-Key: $AGENT_KEY" \
+    -d "{\"message\":\"Can you recommend somewhere to eat near the hotel?\",\"session_id\":\"diag-$i\",\"context\":{}}" \
+    | jq -r '.response' | head -3
+done
 ```
 
-The reply is a good one. Mine was:
+You will get two different kinds of answer. Most of the time, a good one:
 
-> *"I apologize, but stays longer than 30 nights require special
-> arrangements. May I connect you with our reservations team to assist
-> with this?"*
+```
+I recommend the following dining options near The Grand Meridian:
+1. L'Ardoise - A French bistro, just a 4-minute walk away...
+```
 
-Polite, specific, plausible — and `200 OK`. A guest is well served, and
-if this is all you ever see, there is nothing here to look into.
+And sometimes this:
 
-Now open that request in **Traces**, click the tool span, and take the
-**Tools** tab:
+```
+I'm sorry for the inconvenience. I can certainly provide restaurant
+recommendations near the hotel. Would you like me to do so?
+```
 
-| Name | Input | Output |
+Same question, same agent, same code. One reply is what you built; the
+other apologises for nothing and asks the guest to ask again. Both are
+`200 OK`, and the runtime logs are identical.
+
+An agent that is *mostly* fine is the hardest kind to act on. There is
+nothing to reproduce and nothing to report — until you look at the tool
+spans, where all three requests say the same thing:
+
+| Call | Input | Output |
 |---|---|---|
-| `check_room_availability` | `{"room_type": "presidential", "check_in": "2026-11-01", "nights": 45}` | `{"error": "Nights must be an integer between 1 and 30."}` |
+| 1 | `{"category": "dining"}` | `{"error": "Unknown category. Available: restaurants, family, nightlife, outdoors."}` |
+| 2 | `{"category": "restaurants"}` | `{"category": "restaurants", "recommendations": [...], "count": 3}` |
 
-The tool call did not succeed. The model recovered from it so gracefully
-that the reply reads like hotel policy rather than a refusal — and
-"stays longer than 30 nights" is the model relaying the error text it was
-handed.
+**Every one of those requests got the first call wrong.** The good answers
+are the model noticing the error, working out the real category name from
+it, and trying again — a second round trip and a second set of tokens,
+every time anyone asks about food. The bad answer is the same first call,
+on a turn where the model gave up instead of retrying.
 
-**This is the whole argument for tracing an agent, in one screen.** The
-response body is what the agent chose to say. The trace is what the agent
-actually did. In an ordinary service those are close enough to the same
-thing that you can debug from the response and the status code. Here they
-are not related: a failed call, a graceful recovery and a happy guest all
-produce one `200 OK`, and the difference between "answered from data" and
-"answered around a failure" exists only in the trace.
+**Why did it ask for `dining`?** Because that is what we told it to ask
+for. The description shipped to the model lists the categories, and the
+list is wrong:
 
-Worth knowing which of those you are shipping. If every guest asking for
-a long stay is being handed a polite deflection, that is a product
-decision someone should make on purpose.
-
-### Making it findable, not just visible
-
-You found this one because you went looking. To catch it in aggregate,
-the failure has to be a failure in your code first — span status is set
-from what your tools do, and step 5's conditions read that status.
-
-`agent/tools.py` states its contract in its own docstring — *"Tools never
-raise into the agent loop"* — and implements it the ordinary way:
-
-```python
-if not isinstance(n, int) or n < 1 or n > 30:
-    return {"error": "Nights must be an integer between 1 and 30."}
+```
+category: One of: dining, family, nightlife, outdoors.
 ```
 
-The tool **returns** its failure rather than raising it. That is a
-defensible choice — it is why the agent degrades politely instead of
-handing a guest a stack trace — but it is a choice with a consequence:
-downstream, the call completed normally, so it reads as a detail inside
-one trace rather than an event you can count. Raise instead, or set the
-span status yourself, and the same failure becomes something
-`--condition error_status` will hand you across a whole window.
+The data in `agent/hotel_data.py` is keyed `restaurants`, `family`,
+`nightlife`, `outdoors`. Three of the four match. One does not, and it is
+the one every hungry guest hits.
 
-Either way the data was captured. That is the part you do not have to
-plan for.
+The model was not confused and it did not hallucinate. It read the
+interface we gave it and used it exactly as documented. The bug is in the
+sentence, and the sentence is in the prompt the model sees — which is why
+nothing in your tests, your types or your status codes has an opinion
+about it.
 
-> **The same distinction, one layer up.** Try `"What does the Garden Villa
-> cost per night?"` — a room type that does not exist. The reply is
-> correct, and the trace shows **no tool call at all**: the model answered
-> from the tool's own schema, which lists the five real room types. Right
-> answer, nothing consulted. That is the difference a response cannot show
-> you and a trace can — and measuring it across many answers, rather than
-> reading one, is module 03.
+### The fix
+
+`agent/tools.py` maintains that list two ways, and picks between them with
+an env var read at startup:
+
+| `TOOL_DOCS` | The description is |
+|---|---|
+| `handwritten` (default) | typed out by hand — and drifted from the data |
+| `generated` | derived from `RECOMMENDATIONS`, so it cannot drift |
+
+So the fix is configuration, not code, and there is nothing to rebuild:
+
+```bash
+amctl agent deploy grand-meridian-concierge \
+  --project default --env TOOL_DOCS=generated --yes
+```
+
+Wait for `active`, ask the same question, and read the tool spans again:
+
+| Call | Input | Output |
+|---|---|---|
+| 1 | `{"category": "restaurants"}` | `{"category": "restaurants", "recommendations": [...], "count": 3}` |
+
+One call, the right call, every time — and the answer names L'Ardoise
+without being asked twice.
+
+> **The durable version of this fix is the second row of that table.** A
+> tool description is an interface that a model reads and no compiler
+> checks: nothing in Python objects to a docstring that lies about its own
+> data. Hand-written descriptions drift the moment the data moves.
+> Generating them from the thing they describe is how you stop shipping
+> this bug — and traces are how you find the one you already shipped.
 
 ## Step 7 — Ask in English
 
@@ -381,10 +402,10 @@ fast, cheap answer that quoted a room rate the hotel does not charge.
 Every span would be green. The latency would be fine. The token count
 would be unremarkable.
 
-Step 6 is the near miss that makes the point. Reading one trace told you
-a tool had quietly refused — but it took a suspicion and a click, and
-nothing told you whether the answers the agent *did* give were any good.
-You cannot read every trace.
+Step 6 is the closest it gets, and it still needed you to go looking. The
+trace named the bug once you suspected one, but nothing raised a hand —
+the apology and the good answer came back through the same green spans,
+because nothing was scoring either of them.
 
 That gap is module 03.
 
