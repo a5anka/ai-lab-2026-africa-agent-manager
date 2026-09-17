@@ -157,8 +157,8 @@ of those it needs, and how much context each one carries. Request 6 in the
 seed script shows the same effect across turns of a conversation instead
 of within one request.
 
-Sum the `llm` spans for the cost of the whole request. `trace-tree.py` in
-step 4 does that arithmetic and prints it on the first line.
+Sum the `llm` spans for the cost of the whole request — the console shows
+each one's tokens on the span.
 
 ### Why did it say that?
 
@@ -177,7 +177,7 @@ model extracted both, twice, and picked the enum values the tool accepts.
 That is the closest thing an agent has to a stack trace — and it is the
 first place to look when an answer is wrong but the code is fine.
 
-## Step 4 — The same trace, in the terminal
+## Step 4 — The same data, in the terminal
 
 Everything above has a CLI path. These steps use `amctl`, which connects
 to a self-managed install today — see the
@@ -191,46 +191,21 @@ amctl agent traces grand-meridian-concierge \
   | jq -r '.data.traces[] | "\(.traceId[0:8])  \(.spanCount) spans  \(.durationInNanos/1000000|round)ms"'
 ```
 
-Then pull full span data and render it:
-
-```bash
-amctl agent traces export grand-meridian-concierge \
-  --project default --env default --since 30m --limit 20 --json \
-  | ./trace-tree.py --trace <traceId-prefix>
+```
+dd45e286  16 spans  2598ms
+5541b9f2   8 spans  3700ms
 ```
 
-`trace-tree.py` is in this directory — standard library only, no
-dependencies. One run's output, so that you know what to expect rather
-than what to match:
+That is the index the console's Traces view gives you, in a form you can
+pipe. Span count is the useful column: it tells you what the agent
+decided to do before you open anything.
 
-```
-3c7483a3  18 spans · 2 model calls · 2 tool calls · 1,219 in / 163 out tokens
+For the inside of a single request — the span tree, the timings, the
+tokens per model call — use the console. It draws that better than a
+terminal will, and step 2 already did it.
 
-invoke_agent LangGraph                               2,345ms  ████████████████████████
-  LangGraph.workflow                                 2,344ms  ████████████████████████
-    execute_task agent                               1,071ms  ███████████
-      execute_task call_model                        1,070ms  ███████████
-      execute_task RunnableSequence                  1,069ms  ███████████
-        execute_task Prompt                              0ms  █
-        ChatOpenAI.chat                              1,068ms  ███████████   gpt-4o  494 in / 62 out
-      execute_task should_continue                       1ms  █
-    execute_task tools                                  69ms  █
-      execute_tool check_room_availability              65ms  █   {"nights":3,"room_type":"junior"}
-    execute_task tools                                   3ms  █
-      execute_tool check_room_availability               1ms  █   {"nights":3,"room_type":"presidential"}
-    execute_task agent                               1,197ms  ████████████
-      execute_task call_model                        1,196ms  ████████████
-      execute_task RunnableSequence                  1,195ms  ████████████
-        execute_task Prompt                              0ms  █
-        ChatOpenAI.chat                              1,194ms  ████████████   gpt-4o  725 in / 101 out
-      execute_task should_continue                       0ms  █
-```
-
-Your durations and token counts will be different — they are a property
-of the model and of what it decided to do, not of the platform. The shape
-is what holds: a model call, the tool calls it chose, a model call.
-
-Add `--attrs` to print every `gen_ai.*` attribute on every span.
+What the terminal is for is everything you cannot click: filtering across
+a window, feeding traces to a script, and the checks in step 6.
 
 **Use `traces export`, not `trace`.** They return different things:
 
@@ -240,8 +215,8 @@ Add `--attrs` to print every `gen_ai.*` attribute on every span.
 | `amctl agent trace <traceId> --span <spanId>` | One span in full, attributes included |
 | `amctl agent traces export` | Every trace in the window, every span, attributes included |
 
-`trace-tree.py` accepts either of the bulk forms. Given the flat one it
-draws the tree and the timings and simply has no tokens to show.
+The middle column is the trap: attributes are where the token counts and
+the tool arguments live, so anything that reads them wants `export`.
 
 ## Step 5 — Finding the request worth looking at
 
@@ -306,7 +281,7 @@ the trace and read the tool's own output:
 ```bash
 amctl agent traces export grand-meridian-concierge \
   --project default --env default --since 30m --limit 20 --json \
-  | ./trace-tree.py --tool-errors
+  | ./tool-errors.py
 ```
 
 ```
@@ -335,13 +310,13 @@ status is your code's assertion, not the platform's guess.
 **The fix has two halves, and the first one you can do right now.** The
 evidence was never lost: the tool's arguments and its result are both on
 the span, so the failure is findable even when it is not *flagged*. That
-is what `--tool-errors` reads, and it turns a lucky catch into a check
+is what `tool-errors.py` reads, and it turns a lucky catch into a check
 you can run over any window:
 
 ```bash
 amctl agent traces export grand-meridian-concierge \
   --project default --env default --since 24h --limit 100 --json \
-  | ./trace-tree.py --tool-errors
+  | ./tool-errors.py
 ```
 
 Run it after any change and you will see every tool that quietly refused
@@ -421,7 +396,7 @@ Every span would be green. The latency would be fine. The token count
 would be unremarkable.
 
 Step 6 is the near miss that makes the point. Reading one trace told you
-a tool had quietly refused, and `--tool-errors` will tell you how often
+a tool had quietly refused, and `tool-errors.py` will tell you how often
 it happens. Neither tells you whether the answers the agent *did* give
 were any good — and you cannot read every trace.
 
