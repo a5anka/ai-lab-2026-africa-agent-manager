@@ -13,9 +13,11 @@ tool calls, and spent tokens. This module is about getting all of that
 back — and about the fact that you already have it, because it started
 the moment the agent was deployed in module 01.
 
-## Nothing was added to the agent
+## Zero-code auto-instrumentation
 
-Before anything else, check what is in `agent/requirements.txt`:
+The traces exist because Agent Manager instruments the agent for you at
+deploy time. Before anything else, check what is in
+`agent/requirements.txt`:
 
 ```bash
 grep -i -E 'otel|opentelemetry|traceloop' ../agent/requirements.txt
@@ -36,10 +38,10 @@ amctl agent create --help | grep instrumentation
 # →   --no-auto-instrumentation   Disable automatic instrumentation
 ```
 
-That default is the whole argument of this module: **every agent you
-deploy arrives instrumented**, including the ones written long before
-anyone on the team was thinking about traces. You get the coverage
-without having to run a campaign to get it.
+Because of that default, **every agent you deploy arrives instrumented** —
+including the ones written long before anyone on the team was thinking
+about traces. You get the coverage without having to run a campaign to
+get it.
 
 ## Step 1 — Make some traffic
 
@@ -177,11 +179,12 @@ first place to look when an answer is wrong but the code is fine.
 
 ## Step 4 — The same trace, in the terminal
 
-Everything above has a CLI path. List recent traces:
+Everything above has a CLI path. List recent traces — pass `--limit`, it
+defaults to 10:
 
 ```bash
 amctl agent traces grand-meridian-concierge \
-  --project default --env default --since 30m --json \
+  --project default --env default --since 30m --limit 50 --json \
   | jq -r '.data.traces[] | "\(.traceId[0:8])  \(.spanCount) spans  \(.durationInNanos/1000000|round)ms"'
 ```
 
@@ -257,12 +260,11 @@ amctl agent traces grand-meridian-concierge \
 | `tool_call_fails` | Tool invocations that did not succeed |
 | `excessive_steps` | More spans than `--max-spans` (default 40) — the agent that would not stop |
 
-`excessive_steps` is the one worth dwelling on. A loop that never
-converges is a failure mode ordinary services do not have: it is
-expensive rather than loud, every individual step is fast so no latency
-alert fires, and it returns `200 OK` the whole time. A span-count
-threshold is how you find it — and step 1 already showed that span count
-tracks what the agent decided to do.
+`excessive_steps` is the one with no equivalent in ordinary services. A
+loop that never converges is expensive rather than loud: every individual
+step is fast, so no latency alert fires, and it returns `200 OK` the whole
+time. A span-count threshold is how you find it — and step 1 already
+showed that span count tracks what the agent decided to do.
 
 > **Reading the result count.** A filtered response reports it as
 > `data.count`, an unfiltered one as `data.totalCount`, so
