@@ -24,6 +24,8 @@ lookups (`amctl agent trace ... --span <spanId>`).
 Options:
     --attrs           print every gen_ai.* attribute on every span
     --trace <prefix>  with export input, render only this trace
+    --tool-errors     skip the trees; list every tool call whose own
+                      recorded output came back carrying an error
 
 Standard library only. No dependencies, no install.
 """
@@ -66,6 +68,68 @@ def tool_args(span: dict) -> str:
     amp = span.get("ampAttributes") or {}
     val = amp.get("input")
     return val if isinstance(val, str) else ""
+
+
+TOOL_OUTPUT = ("traceloop.entity.output", "gen_ai.tool.call.result")
+TOOL_NAME = ("gen_ai.tool.name", "traceloop.entity.name")
+
+
+def tool_output(span: dict) -> str:
+    a = attrs_of(span)
+    for k in TOOL_OUTPUT:
+        v = a.get(k)
+        if isinstance(v, str) and v:
+            return v
+    amp = span.get("ampAttributes") or {}
+    v = amp.get("output")
+    return v if isinstance(v, str) else ""
+
+
+def error_in_output(text: str) -> str:
+    """Return the error message a tool reported, or "" if it reported none.
+
+    A tool that returns {"error": ...} instead of raising leaves a span with
+    a healthy status, so the platform counts the call as a success and
+    --condition tool_call_fails will not match it. The evidence survives in
+    the tool's own recorded output, which is what this reads.
+    """
+    if not text:
+        return ""
+    for needle in ('\\"error\\":', '"error":', "'error':"):
+        i = text.find(needle)
+        if i == -1:
+            continue
+        tail = text[i + len(needle):].lstrip()
+        for quote in ('\\"', '"', "'"):
+            if tail.startswith(quote):
+                rest = tail[len(quote):]
+                end = rest.find(quote)
+                if end > 0:
+                    return rest[:end]
+        return tail[:120].rstrip(",}").strip()
+    return ""
+
+
+def report_tool_errors(found: list) -> int:
+    """Print one line per failed tool call. Returns the number found."""
+    hits = 0
+    for trace_id, spans in found:
+        for span in spans:
+            if kind_of(span) != "tool":
+                continue
+            message = error_in_output(tool_output(span))
+            if not message:
+                continue
+            hits += 1
+            name = pick(attrs_of(span), TOOL_NAME, pick(span, NAME, "?"))
+            print(f"{trace_id[:8]}  {name}")
+            print(f"          reported: {message}")
+            args = tool_args(span)
+            if args:
+                print(f"          called with: {args[:160]}")
+    if not hits:
+        print("No tool call in this window reported an error.")
+    return hits
 
 
 def ms(nanos) -> float:
@@ -140,6 +204,7 @@ def render_trace(trace_id: str, spans: list[dict], show_attrs: bool) -> None:
 def main() -> None:
     argv = sys.argv[1:]
     show_attrs = "--attrs" in argv
+    tool_errors = "--tool-errors" in argv
     wanted = argv[argv.index("--trace") + 1] if "--trace" in argv else None
 
     try:
@@ -154,6 +219,10 @@ def main() -> None:
         found = [t for t in found if t[0].startswith(wanted)]
         if not found:
             sys.exit(f"No trace starting with {wanted!r} in that input.")
+
+    if tool_errors:
+        report_tool_errors(found)
+        return
 
     for i, (trace_id, spans) in enumerate(found):
         if i:

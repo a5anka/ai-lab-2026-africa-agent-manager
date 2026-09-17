@@ -1,6 +1,6 @@
 # Module 02 — Observability: seeing inside a single request
 
-**Duration:** 15 min
+**Duration:** 20 min
 
 Module 00 ended with one line of evidence per request:
 
@@ -179,8 +179,8 @@ first place to look when an answer is wrong but the code is fine.
 
 ## Step 4 — The same trace, in the terminal
 
-Everything above has a CLI path. These steps use `amctl` and the MCP
-servers, which connect to a self-managed install today — see the
+Everything above has a CLI path. These steps use `amctl`, which connects
+to a self-managed install today — see the
 [repo README](../README.md#prerequisites).
 
 List recent traces — pass `--limit`, it defaults to 10:
@@ -273,43 +273,118 @@ showed that span count tracks what the agent decided to do.
 > `data.count`, an unfiltered one as `data.totalCount`, so
 > `jq '.data.count // .data.totalCount'` covers both.
 
-## Step 6 — Ask in English
+## Step 6 — The failure the response hid
 
-Agent Manager ships a **second MCP server** dedicated to observability —
-`am-obs-mcp` — separate from the lifecycle one. Seven tools:
-`get_runtime_logs`, `get_build_logs`, `get_metrics`, `list_traces`,
-`get_traces`, `get_trace_details`, `get_span_details`.
-
-It runs on its own host. Ask your instance where:
+Ask for a stay the hotel cannot price:
 
 ```bash
-curl -s <your-api-base-url>/api/v1/config
-# → {"observerBaseUrl":"https://..."}
+curl -s -X POST "$AGENT_URL/chat" \
+  -H 'Content-Type: application/json' -H "X-API-Key: $AGENT_KEY" \
+  -d '{"message":"I would like the presidential suite for 45 nights starting 2026-11-01. What is the total?","session_id":"diag","context":{}}'
 ```
 
-Append `/mcp`, and register it with your assistant. Note the dedicated
-client ID and callback port — the observability server has its own, and a
-token issued for the lifecycle MCP server will not work here:
+The reply is a good one. Mine was:
+
+> *"I apologize, but stays longer than 30 nights require special
+> arrangements. May I connect you with our reservations team to assist
+> with this?"*
+
+Polite, specific, plausible. `200 OK`. Now go looking for it with the
+condition that ought to find it:
 
 ```bash
-claude mcp add --transport http agent-manager-observer <observerBaseUrl>/mcp \
-  --client-id am-obs-mcp \
-  --callback-port 33419
+amctl agent traces grand-meridian-concierge \
+  --project default --env default --since 30m \
+  --condition tool_call_fails --json | jq '.data.count'
+# → 0
 ```
 
-Then ask, in a sentence:
+Zero. The trace list agrees — that request came back with
+`"status": {"errorCount": 0}`. And yet a tool call in it did fail. Export
+the trace and read the tool's own output:
+
+```bash
+amctl agent traces export grand-meridian-concierge \
+  --project default --env default --since 30m --limit 20 --json \
+  | ./trace-tree.py --tool-errors
+```
+
+```
+dd45e286  check_room_availability
+          reported: Nights must be an integer between 1 and 30.
+          called with: {"check_in":"2026-11-01","nights":45,"room_type":"presidential"}
+```
+
+There it is, in the tool's recorded result.
+
+**Why the condition missed it.** Look at what `agent/tools.py` does — it
+is the first line of the module 00 agent's docstring, and a completely
+ordinary way to write a tool:
+
+```python
+if not isinstance(n, int) or n < 1 or n > 30:
+    return {"error": "Nights must be an integer between 1 and 30."}
+```
+
+The tool **returns** its failure instead of raising it. So the function
+completed, the span carries a healthy status, and every layer above it —
+`errorCount`, `--condition tool_call_fails`, any alert wired to either —
+correctly reports a success, because that is what the code claimed. Span
+status is your code's assertion, not the platform's guess.
+
+**The fix has two halves, and the first one you can do right now.** The
+evidence was never lost: the tool's arguments and its result are both on
+the span, so the failure is findable even when it is not *flagged*. That
+is what `--tool-errors` reads, and it turns a lucky catch into a check
+you can run over any window:
+
+```bash
+amctl agent traces export grand-meridian-concierge \
+  --project default --env default --since 24h --limit 100 --json \
+  | ./trace-tree.py --tool-errors
+```
+
+Run it after any change and you will see every tool that quietly refused
+to answer — which room types guests asked for and did not get, which
+dates fell outside the window.
+
+The second half belongs in the agent, and it is one line: raise instead
+of returning, or set the span status yourself. Do that and this stops
+being a report you remember to run — `--condition tool_call_fails` finds
+it for you, `errorCount` counts it, and the alert you already have fires.
+The platform was ready for that signal the whole time; nothing was
+sending it.
+
+> **The same shape, one layer up.** Try `"What does the Garden Villa cost
+> per night?"` — a room type that does not exist. The reply is right, and
+> the trace shows **no tool call at all**: the model answered from the
+> tool's own schema, which lists the five real room types. Right answer,
+> no data consulted. That is the distinction the response text cannot
+> make for you and a trace can — and measuring it across many answers,
+> rather than reading one, is module 03.
+
+## Step 7 — Ask in English
+
+You already installed what this needs. The `manage-agent` skill from
+module 01 taught your assistant `amctl`, and traces are part of what it
+covers — its `triage.md` walks build → logs → metrics → traces in that
+order, and knows which conditions to reach for.
+
+So there is nothing to set up. Ask:
 
 > *"Look at the last hour of traces for grand-meridian-concierge in
 > default. Which request was slowest, and where did the time actually
 > go?"*
 
-The assistant calls `list_traces`, picks the outlier, calls
-`get_trace_details`, and reads the span durations back to you. Same data
-as step 4. The difference is that you did not have to know the shape of
-the JSON to ask the question.
+The assistant lists the traces, picks the outlier, pulls its spans and
+reads the durations back to you. Same data as step 4 — the difference is
+that you did not have to know the shape of the JSON to ask the question.
 
-Pair it with the `manage-agent` skill from module 01 and the loop closes:
-the skill knows the triage order, the observer MCP has the data.
+Then ask it the question this module opened with, and watch it pick its
+own route:
+
+> *"Did any tool call fail in the last hour without the request
+> failing?"*
 
 ## How the traces actually get there
 
@@ -345,6 +420,11 @@ fast, cheap answer that quoted a room rate the hotel does not charge.
 Every span would be green. The latency would be fine. The token count
 would be unremarkable.
 
+Step 6 is the near miss that makes the point. Reading one trace told you
+a tool had quietly refused, and `--tool-errors` will tell you how often
+it happens. Neither tells you whether the answers the agent *did* give
+were any good — and you cannot read every trace.
+
 That gap is module 03.
 
 ## Going further
@@ -352,6 +432,7 @@ That gap is module 03.
 - [Observability concepts](https://wso2.github.io/agent-manager/docs/) — the full attribute contract and the manual-instrumentation path
 - [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — where `gen_ai.usage.input_tokens` and friends are defined
 - `amctl agent traces export --since 24h` — bulk dump of full span data, for analysing traffic outside the console
+- **A dedicated observability MCP server** (`am-obs-mcp`) ships alongside the lifecycle one, with tools for logs, metrics, traces, trace details and span details. Step 7 does not need it — the `manage-agent` skill already drives the CLI — but if you would rather your assistant read the API directly than shell out, ask your instance where it lives: `curl -s <your-api-base-url>/api/v1/config` returns an `observerBaseUrl`, and `/mcp` on that host is the endpoint. It has its own client ID (`am-obs-mcp`) and callback port, so a token issued for the lifecycle server will not work on it.
 
 ---
 
