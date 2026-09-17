@@ -16,9 +16,27 @@ no manifest, no SDK.
 
 ## Step 1 — Register it in the console
 
-1. Open your project and click **Add Agent**.
+1. Open a project and click **Add Agent**. Every command in this lab
+   passes `--project default`, so the **Default Project** that ships with
+   a new instance is the one to use — if you register the agent somewhere
+   else, pass that project's identifier instead.
 2. Pick **Platform-Hosted Agent**, then **Connect a Git repository**.
-3. Fill in the source:
+3. Name it:
+
+   | Field | Value |
+   |---|---|
+   | Name | `Grand Meridian Concierge` |
+   | Description | `Hotel concierge agent for the Agent Manager lab` |
+
+   The **identifier** fills itself in from the name —
+   `grand-meridian-concierge`. That identifier, not the display name, is
+   how every later step addresses this agent, on the command line and in
+   the API. It is derived once, at creation: renaming the agent afterwards
+   leaves it as it was. Either keep the name above, or substitute your own
+   identifier everywhere the rest of this lab says
+   `grand-meridian-concierge`.
+
+4. Fill in the source:
 
    | Field | Value |
    |---|---|
@@ -26,9 +44,9 @@ no manifest, no SDK.
    | Branch | `main` |
    | Application path | `/agent` |
 
-4. Agent type **Chat Agent**, build type **Buildpack**, language
+5. Agent type **Chat Agent**, build type **Buildpack**, language
    **Python**, version **3.11**, run command `python main.py`.
-5. Environment variables:
+6. Environment variables:
 
    | Key | Value | Secret |
    |---|---|---|
@@ -39,7 +57,7 @@ no manifest, no SDK.
    **`PORT` is not optional.** See "Why `PORT`" below — it is the single
    most common reason a lab agent builds fine and never comes up.
 
-6. Click **Create**. The build starts automatically.
+7. Click **Create**. The build starts automatically.
 
 ## Step 2 — Watch the build
 
@@ -138,6 +156,7 @@ The console is for the first time. This is for every time after:
 amctl agent create grand-meridian-concierge \
   --project default \
   --display-name "Grand Meridian Concierge" \
+  --description "Hotel concierge agent for the Agent Manager lab" \
   --subtype chat-api \
   --build-type buildpack \
   --language python --language-version 3.11 \
