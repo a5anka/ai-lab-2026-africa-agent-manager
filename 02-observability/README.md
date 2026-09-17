@@ -205,7 +205,7 @@ tokens per model call — use the console. It draws that better than a
 terminal will, and step 2 already did it.
 
 What the terminal is for is everything you cannot click: filtering across
-a window, feeding traces to a script, and the checks in step 6.
+a window, and piping traces into whatever you already use.
 
 **Use `traces export`, not `trace`.** They return different things:
 
@@ -264,79 +264,65 @@ The reply is a good one. Mine was:
 > arrangements. May I connect you with our reservations team to assist
 > with this?"*
 
-Polite, specific, plausible. `200 OK`. Now go looking for it with the
-condition that ought to find it:
+Polite, specific, plausible — and `200 OK`. A guest is well served, and
+if this is all you ever see, there is nothing here to look into.
 
-```bash
-amctl agent traces grand-meridian-concierge \
-  --project default --env default --since 30m \
-  --condition tool_call_fails --json | jq '.data.count'
-# → 0
-```
+Now open that request in **Traces**, click the tool span, and take the
+**Tools** tab:
 
-Zero. The trace list agrees — that request came back with
-`"status": {"errorCount": 0}`. And yet a tool call in it did fail. Export
-the trace and read the tool's own output:
+| Name | Input | Output |
+|---|---|---|
+| `check_room_availability` | `{"room_type": "presidential", "check_in": "2026-11-01", "nights": 45}` | `{"error": "Nights must be an integer between 1 and 30."}` |
 
-```bash
-amctl agent traces export grand-meridian-concierge \
-  --project default --env default --since 30m --limit 20 --json \
-  | ./tool-errors.py
-```
+The tool call did not succeed. The model recovered from it so gracefully
+that the reply reads like hotel policy rather than a refusal — and
+"stays longer than 30 nights" is the model relaying the error text it was
+handed.
 
-```
-dd45e286  check_room_availability
-          reported: Nights must be an integer between 1 and 30.
-          called with: {"check_in":"2026-11-01","nights":45,"room_type":"presidential"}
-```
+**This is the whole argument for tracing an agent, in one screen.** The
+response body is what the agent chose to say. The trace is what the agent
+actually did. In an ordinary service those are close enough to the same
+thing that you can debug from the response and the status code. Here they
+are not related: a failed call, a graceful recovery and a happy guest all
+produce one `200 OK`, and the difference between "answered from data" and
+"answered around a failure" exists only in the trace.
 
-There it is, in the tool's recorded result.
+Worth knowing which of those you are shipping. If every guest asking for
+a long stay is being handed a polite deflection, that is a product
+decision someone should make on purpose.
 
-**Why the condition missed it.** `agent/tools.py` says so in its own
-docstring — *"Tools never raise into the agent loop"* — and it is a
-completely ordinary way to write a tool:
+### Making it findable, not just visible
+
+You found this one because you went looking. To catch it in aggregate,
+the failure has to be a failure in your code first — span status is set
+from what your tools do, and step 5's conditions read that status.
+
+`agent/tools.py` states its contract in its own docstring — *"Tools never
+raise into the agent loop"* — and implements it the ordinary way:
 
 ```python
 if not isinstance(n, int) or n < 1 or n > 30:
     return {"error": "Nights must be an integer between 1 and 30."}
 ```
 
-The tool **returns** its failure instead of raising it. So the function
-completed, the span carries a healthy status, and every layer above it —
-`errorCount`, `--condition tool_call_fails`, any alert wired to either —
-correctly reports a success, because that is what the code claimed. Span
-status is your code's assertion, not the platform's guess.
+The tool **returns** its failure rather than raising it. That is a
+defensible choice — it is why the agent degrades politely instead of
+handing a guest a stack trace — but it is a choice with a consequence:
+downstream, the call completed normally, so it reads as a detail inside
+one trace rather than an event you can count. Raise instead, or set the
+span status yourself, and the same failure becomes something
+`--condition error_status` will hand you across a whole window.
 
-**The fix has two halves, and the first one you can do right now.** The
-evidence was never lost: the tool's arguments and its result are both on
-the span, so the failure is findable even when it is not *flagged*. That
-is what `tool-errors.py` reads, and it turns a lucky catch into a check
-you can run over any window:
+Either way the data was captured. That is the part you do not have to
+plan for.
 
-```bash
-amctl agent traces export grand-meridian-concierge \
-  --project default --env default --since 24h --limit 100 --json \
-  | ./tool-errors.py
-```
-
-Run it after any change and you will see every tool that quietly refused
-to answer — which room types guests asked for and did not get, which
-dates fell outside the window.
-
-The second half belongs in the agent, and it is one line: raise instead
-of returning, or set the span status yourself. Do that and this stops
-being a report you remember to run — `--condition tool_call_fails` finds
-it for you, `errorCount` counts it, and the alert you already have fires.
-The platform was ready for that signal the whole time; nothing was
-sending it.
-
-> **The same shape, one layer up.** Try `"What does the Garden Villa cost
-> per night?"` — a room type that does not exist. The reply is right, and
-> the trace shows **no tool call at all**: the model answered from the
-> tool's own schema, which lists the five real room types. Right answer,
-> no data consulted. That is the distinction the response text cannot
-> make for you and a trace can — and measuring it across many answers,
-> rather than reading one, is module 03.
+> **The same distinction, one layer up.** Try `"What does the Garden Villa
+> cost per night?"` — a room type that does not exist. The reply is
+> correct, and the trace shows **no tool call at all**: the model answered
+> from the tool's own schema, which lists the five real room types. Right
+> answer, nothing consulted. That is the difference a response cannot show
+> you and a trace can — and measuring it across many answers, rather than
+> reading one, is module 03.
 
 ## Step 7 — Ask in English
 
@@ -396,9 +382,9 @@ Every span would be green. The latency would be fine. The token count
 would be unremarkable.
 
 Step 6 is the near miss that makes the point. Reading one trace told you
-a tool had quietly refused, and `tool-errors.py` will tell you how often
-it happens. Neither tells you whether the answers the agent *did* give
-were any good — and you cannot read every trace.
+a tool had quietly refused — but it took a suspicion and a click, and
+nothing told you whether the answers the agent *did* give were any good.
+You cannot read every trace.
 
 That gap is module 03.
 
