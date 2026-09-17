@@ -20,33 +20,46 @@ no manifest, no SDK.
    passes `--project default`, so the **Default Project** that ships with
    a new instance is the one to use — if you register the agent somewhere
    else, pass that project's identifier instead.
-2. Pick **Platform-Hosted Agent**, then **Connect a Git repository**.
-3. Name it:
+2. Pick **Platform-Hosted Agent**, then **Source Code**.
+3. Under **Agent Details**:
 
    | Field | Value |
    |---|---|
    | Name | `Grand Meridian Concierge` |
-   | Description | `Hotel concierge agent for the Agent Manager lab` |
+   | Description (optional) | `Hotel concierge agent for the Agent Manager lab` |
 
-   The **identifier** fills itself in from the name —
-   `grand-meridian-concierge`. That identifier, not the display name, is
-   how every later step addresses this agent, on the command line and in
-   the API. It is derived once, at creation: renaming the agent afterwards
-   leaves it as it was. Either keep the name above, or substitute your own
+   The **identifier** is derived from the name as you type, and validated
+   while you watch — this name becomes `grand-meridian-concierge`. That
+   identifier, not the display name, is what every later step and every
+   `amctl` command addresses. Keep the name above, or substitute your own
    identifier everywhere the rest of this lab says
    `grand-meridian-concierge`.
 
-4. Fill in the source:
+4. For **Agent Type**, take **Chat Agent** — *"standard chat interface with
+   `/chat` endpoint on port 8000"*, which is exactly what `agent/main.py`
+   serves. (**Custom API Agent**, the other option, is for an agent with
+   its own OpenAPI spec and port.)
+5. Under **Repository Details**:
 
    | Field | Value |
    |---|---|
-   | Repository URL | `https://github.com/wso2con/2026-NBO-AI-tutorial-3` |
+   | GitHub Repository | `https://github.com/wso2con/2026-NBO-AI-tutorial-3` |
    | Branch | `main` |
-   | Application path | `/agent` |
+   | Project Path | `/agent` |
 
-5. Agent type **Chat Agent**, build type **Buildpack**, language
-   **Python**, version **3.11**, run command `python main.py`.
-6. Environment variables:
+6. Under **Build Details**, pick **Python**, then:
+
+   | Field | Value |
+   |---|---|
+   | Language Version | `3.11` |
+   | Start Command | `python main.py` |
+
+   The choice here is **Python · Ballerina · Docker**. Picking a language
+   *is* picking the buildpack — only **Docker** asks you for a Dockerfile,
+   and there isn't one in this repository. That is the whole point of the
+   module.
+
+7. Environment variables:
 
    | Key | Value | Secret |
    |---|---|---|
@@ -57,7 +70,7 @@ no manifest, no SDK.
    **`PORT` is not optional.** See "Why `PORT`" below — it is the single
    most common reason a lab agent builds fine and never comes up.
 
-7. Click **Create**. The build starts automatically.
+8. Click **Create**. The build starts automatically.
 
 ## Step 2 — Watch the build
 
