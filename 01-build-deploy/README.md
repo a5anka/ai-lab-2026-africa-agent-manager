@@ -22,7 +22,7 @@ no manifest, no SDK.
 
    | Field | Value |
    |---|---|
-   | Repository URL | `https://github.com/a5anka/ai-lab-2026-africa-agent-manager` |
+   | Repository URL | `https://github.com/wso2con/2026-NBO-AI-tutorial-3` |
    | Branch | `main` |
    | Application path | `/agent` |
 
@@ -142,7 +142,7 @@ amctl agent create grand-meridian-concierge \
   --build-type buildpack \
   --language python --language-version 3.11 \
   --run-command "python main.py" \
-  --repo-url https://github.com/a5anka/ai-lab-2026-africa-agent-manager \
+  --repo-url https://github.com/wso2con/2026-NBO-AI-tutorial-3 \
   --repo-branch main --repo-path /agent \
   --env OPENAI_MODEL=gpt-4o \
   --env PORT=8000 \

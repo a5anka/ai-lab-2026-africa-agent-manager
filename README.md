@@ -79,8 +79,8 @@ itself stays exactly as it was written.
 ## Quick start
 
 ```bash
-git clone <repo-url> ai-lab-2026-africa
-cd ai-lab-2026-africa/agent
+git clone https://github.com/wso2con/2026-NBO-AI-tutorial-3.git
+cd 2026-NBO-AI-tutorial-3/agent
 
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
