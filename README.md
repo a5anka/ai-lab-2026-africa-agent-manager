@@ -45,11 +45,36 @@ itself stays exactly as it was written.
 - **Python 3.11 or 3.12.** Avoid 3.13 / 3.14 — the LangGraph pins used
   here do not support them yet. macOS: `brew install python@3.11`.
 - **An OpenAI API key** (`sk-...`).
-- **An Agent Manager instance** you can register an agent in. The fastest
-  path is the hosted version at
-  [console.agent-manager.cloud.wso2.com](https://console.agent-manager.cloud.wso2.com).
-  Module 00 runs without one; modules 01–04 need it.
-- **`amctl`**, the Agent Manager CLI — installed in module 01, not before.
+- **An Agent Manager instance** you can register an agent in. Module 00
+  runs without one; modules 01–04 need it. There are two ways to get one:
+
+  - **Run it yourself.** The
+    [quick start](https://wso2.github.io/agent-manager/docs/latest/get-started/quick-start/)
+    brings up a complete install in a dev container and puts the console
+    on `http://console.amp.localhost:8080` (`admin` / `admin`). This lab
+    is written and verified against a self-managed install, and it is the
+    setup to choose if you want the CLI and MCP steps as well as the
+    console ones.
+  - **Use the hosted version** at
+    [console.agent-manager.cloud.wso2.com](https://console.agent-manager.cloud.wso2.com)
+    — nothing to install. Every module's main path is a console path, so
+    this carries the whole lab. `amctl` and the MCP servers connect to a
+    self-managed instance today; hosted support for them is on the way,
+    and the steps here will work unchanged when it lands.
+
+- **`amctl`**, the Agent Manager CLI, if you are following the terminal
+  steps. Install it and log in before module 01:
+
+  ```bash
+  curl -fsSL https://wso2.github.io/agent-manager/install.sh | sh
+  amctl version
+
+  amctl login --url http://api.amp.localhost:8080
+  ```
+
+  The URL is your instance's **API** base, not the console's. `login`
+  opens a browser to sign in; `amctl project list` afterwards confirms it
+  took.
 
 ## Quick start
 

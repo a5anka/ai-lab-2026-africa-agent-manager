@@ -179,8 +179,11 @@ first place to look when an answer is wrong but the code is fine.
 
 ## Step 4 — The same trace, in the terminal
 
-Everything above has a CLI path. List recent traces — pass `--limit`, it
-defaults to 10:
+Everything above has a CLI path. These steps use `amctl` and the MCP
+servers, which connect to a self-managed install today — see the
+[repo README](../README.md#prerequisites).
+
+List recent traces — pass `--limit`, it defaults to 10:
 
 ```bash
 amctl agent traces grand-meridian-concierge \

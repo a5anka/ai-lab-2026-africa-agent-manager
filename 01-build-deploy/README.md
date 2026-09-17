@@ -9,6 +9,11 @@ a buildpack, deploys it, and puts a gateway in front of it.
 The agent code does not change. Nothing is added to it — no Dockerfile,
 no manifest, no SDK.
 
+> The terminal steps below use `amctl` — install it and log in first, as
+> described in the [repo README](../README.md#prerequisites). On the
+> hosted version, follow the console route in each step; `amctl` and the
+> MCP servers talk to a self-managed install today.
+
 ## Step 1 — Register it in the console
 
 1. Open your project and click **Add Agent**.
@@ -69,6 +74,8 @@ amctl agent status grand-meridian-concierge --project default --json \
 ```
 
 Wait for `"status": "active"`. Note the endpoint URL — you need it next.
+The console shows the same thing on the agent's overview: each
+environment with its own status and endpoint.
 
 `amctl agent get` will *not* tell you this. Its `status` field is empty
 even when the agent is broken. Liveness comes from `status`, `logs` or

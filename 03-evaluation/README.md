@@ -317,7 +317,9 @@ than a snapshot.
 ## Step 7 — The same monitor, every time
 
 The console is the right place to design a monitor. Once it is designed,
-you want it identical on every agent and after every release:
+you want it identical on every agent and after every release. This step
+runs on `amctl`, so it needs a self-managed install — see the
+[repo README](../README.md#prerequisites):
 
 ```bash
 ./create-monitor.sh                       # defaults: this agent, last 6 hours
